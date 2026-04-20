@@ -6,7 +6,8 @@ export function middleware(request: NextRequest) {
   const isProtected =
     pathname.startsWith('/investigators') ||
     pathname.startsWith('/modules') ||
-    pathname.startsWith('/sessions');
+    pathname.startsWith('/sessions') ||
+    pathname.startsWith('/settings');
 
   if (!isProtected) return NextResponse.next();
 

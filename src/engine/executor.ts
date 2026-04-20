@@ -24,6 +24,13 @@ export interface ExecuteTurnInput {
 export interface ExecuteTurnDeps {
   rng: Rng;
   callKp: KpCaller;
+  /**
+   * Fired synchronously right after a pending check has been resolved,
+   * BEFORE the KP is asked to narrate the outcome.  Used by the streaming
+   * route handler to flush the dice-animation event to the browser so the
+   * player sees the roll while the KP is still "thinking".
+   */
+  onCheckResolved?: (resolution: CheckResolution) => void | Promise<void>;
 }
 
 export interface ExecuteTurnResult {
@@ -68,6 +75,12 @@ export async function executeTurn(
       at: stamp(),
     });
     state.pending_check = null;
+
+    // Fire the dice-resolved hook BEFORE calling the KP so the client can
+    // start the physical dice animation while the KP is still generating.
+    if (deps.onCheckResolved) {
+      await deps.onCheckResolved(resolvedCheck);
+    }
   }
 
   // 3. build context + call KP

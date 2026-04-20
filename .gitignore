@@ -28,3 +28,6 @@ next-env.d.ts
 
 # Jupyter artifacts (crept in from some tool)
 .ipynb_checkpoints/
+
+# Local ComfyUI install (models + python venv are huge; do NOT commit)
+ComfyUI/

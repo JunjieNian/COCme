@@ -1,5 +1,5 @@
 import { importModuleAction } from '../actions';
-import { LongTaskButton } from '@/app/_components/LongTaskButton';
+import { GenerationProgress } from '@/app/_components/GenerationProgress';
 
 export const dynamic = 'force-dynamic';
 
@@ -62,7 +62,25 @@ export default async function ImportModulePage({
           />
         </label>
 
-        <LongTaskButton pendingLabel="整理中">开始整理</LongTaskButton>
+        <GenerationProgress
+          label="整理文档为模组结构"
+          expectedSec={45}
+          phases={[
+            { from: 0,  label: '连接 DeepSeek 整理器' },
+            { from: 3,  label: '解析你粘贴的文本' },
+            { from: 12, label: '提取场景 / NPC / 线索' },
+            { from: 30, label: '补全缺失部分并交叉验证' },
+            { from: 60, label: '快好了，再等一会儿' },
+          ]}
+          submitButton={
+            <button
+              type="submit"
+              className="rounded border border-rust-600 bg-rust-700/60 px-5 py-2 hover:bg-rust-600"
+            >
+              开始整理
+            </button>
+          }
+        />
       </form>
     </section>
   );

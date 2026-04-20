@@ -39,6 +39,26 @@ export interface UserRow {
   /** AES-GCM ciphertext of the user's own DeepSeek API key (optional). */
   deepseek_api_key_enc?: string;
   deepseek_api_key_updated_at?: string;
+  /** Image-generation settings (optional; absence = disabled). */
+  visual_settings?: UserVisualSettings;
+}
+
+export interface UserVisualSettings {
+  /** Master toggle.  If false, no jobs are enqueued regardless of other settings. */
+  enabled: boolean;
+  /**
+   * Which clue-revealed events should auto-generate.
+   *   off:      nothing auto; only manual regenerate
+   *   key_only: only clues with visual_hint.importance in {major, finale}
+   *   normal:   all revealed clues (default if enabled)
+   */
+  auto: 'off' | 'key_only' | 'normal';
+  /** Only ComfyUI supported at the moment.  Keep string for future providers. */
+  provider: 'comfyui';
+  /** e.g. http://127.0.0.1:8188 — no trailing slash. */
+  comfyui_base_url: string;
+  /** Cap per session; past this, new jobs are skipped. */
+  max_per_session: number;
 }
 
 export interface ModuleChunkRow {
@@ -65,6 +85,38 @@ export interface GrowthRecordRow {
   created_at: string;
 }
 
+export interface VisualAssetRow {
+  id: string;
+  user_id: string;
+  session_id: string;
+  module_id: string;
+
+  target_type: 'clue' | 'scene' | 'npc' | 'artifact' | 'sanity' | 'ending';
+  target_key: string;
+
+  status: 'queued' | 'generating' | 'ready' | 'failed' | 'skipped';
+
+  provider: string;
+  model: string;
+
+  prompt_en: string;
+  negative_prompt: string;
+  seed: number;
+  width: number;
+  height: number;
+
+  /** Relative to data/: "assets/visuals/<id>.png" — read via server route, not direct static. */
+  image_path: string | null;
+
+  /** Short Chinese label shown next to the image. */
+  caption: string;
+
+  error: string | null;
+
+  created_at: string;
+  updated_at: string;
+}
+
 interface Schema {
   users: UserRow[];
   investigators: InvestigatorRow[];
@@ -78,6 +130,7 @@ interface Schema {
   session_clues: SessionClueRow[];
   session_npcs: SessionNpcRow[];
   growth_records: GrowthRecordRow[];
+  visual_assets: VisualAssetRow[];
 }
 
 const TABLES: readonly (keyof Schema)[] = [
@@ -93,6 +146,7 @@ const TABLES: readonly (keyof Schema)[] = [
   'session_clues',
   'session_npcs',
   'growth_records',
+  'visual_assets',
 ] as const;
 
 // Anchor the singleton to globalThis so Next.js dev mode's module
@@ -115,6 +169,7 @@ export class LocalDB {
   session_clues: SessionClueRow[] = [];
   session_npcs: SessionNpcRow[] = [];
   growth_records: GrowthRecordRow[] = [];
+  visual_assets: VisualAssetRow[] = [];
 
   private writeQueue: Promise<void> = Promise.resolve();
 
@@ -135,6 +190,8 @@ export class LocalDB {
     } else {
       // Cheap freshness check: reload any table whose disk mtime moved ahead.
       await db.refreshChangedTables();
+      // Self-heal for schema additions against a cached instance.
+      db.ensureAllTablesInitialized();
     }
     return db;
   }
@@ -142,6 +199,21 @@ export class LocalDB {
   private async loadAll(): Promise<void> {
     for (const table of TABLES) {
       await this.loadTable(table);
+    }
+    this.ensureAllTablesInitialized();
+  }
+
+  /**
+   * Defensive init: if a newly-added table field doesn't exist on this
+   * instance yet (e.g. dev-mode hot reload kept the old instance around
+   * after a schema addition, or a table has no on-disk file yet), make
+   * sure we have an empty array instead of `undefined` so callers can
+   * always `.filter()` / `.push()` safely.
+   */
+  private ensureAllTablesInitialized(): void {
+    const self = this as unknown as Record<string, unknown>;
+    for (const t of TABLES) {
+      if (!Array.isArray(self[t])) self[t] = [];
     }
   }
 
@@ -182,22 +254,33 @@ export class LocalDB {
    * Execute a mutation closure, then persist every affected table.  All
    * mutations are serialized; a second call waits for the first to finish
    * before running.  The closure may return data to be passed back.
+   *
+   * Failure isolation: if `fn` throws, the error propagates to THIS caller
+   * only; the shared `writeQueue` continues with a resolved sentinel so the
+   * next caller's mutation still runs.  Previously a single throw would
+   * poison the queue and every subsequent mutation (across any table) would
+   * re-reject with the original error.
    */
   async mutate<T>(
     tables: ReadonlyArray<keyof Schema>,
     fn: (db: LocalDB) => T | Promise<T>,
   ): Promise<T> {
-    let outcome!: T;
-    const run = async (): Promise<void> => {
+    const myTurn = this.writeQueue.catch(() => undefined).then(async () => {
       // Refresh first so the closure sees any concurrent writes from
       // elsewhere (e.g. another route's mutation during page render).
       await this.refreshChangedTables();
-      outcome = await fn(this);
+      const outcome = await fn(this);
       await this.saveTables(tables);
-    };
-    this.writeQueue = this.writeQueue.then(run);
-    await this.writeQueue;
-    return outcome;
+      return outcome;
+    });
+    // Next caller waits on the settled-regardless version so our rejection
+    // doesn't poison the queue.  Our rejection still surfaces to this caller
+    // through the `await myTurn` below.
+    this.writeQueue = myTurn.then(
+      () => undefined,
+      () => undefined,
+    );
+    return myTurn;
   }
 
   private async saveTables(tables: ReadonlyArray<keyof Schema>): Promise<void> {

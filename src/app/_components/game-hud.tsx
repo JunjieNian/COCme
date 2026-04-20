@@ -62,26 +62,44 @@ export function CheckPrompt({
   ]
     .filter(Boolean)
     .join('，');
+  // Difficulty target math (skill or stat): commit / hard / extreme.
+  // We don't know the exact target value in the view (it's not in pending_check),
+  // so just label the tier.
+  const diffLabel = c.difficulty === 'regular' ? '常规' : c.difficulty === 'hard' ? '困难' : '极限';
+
   return (
-    <div className="rounded border border-rust-600/50 bg-rust-700/10 px-4 py-3 text-sm">
-      <p>
-        KP 等你进行：<span className="font-serif text-base">{skill}</span> ({c.difficulty})
-        {bonuses ? `，${bonuses}` : ''}
-      </p>
-      {c.note && <p className="mt-1 text-ink-300">{c.note}</p>}
+    <div className="rounded-md border-2 border-rust-600/60 bg-rust-700/15 p-4 text-sm">
+      <div className="flex items-baseline justify-between gap-4">
+        <div>
+          <div className="text-[11px] uppercase tracking-widest text-rust-300">
+            下一个行动将触发检定
+          </div>
+          <div className="mt-0.5 font-serif text-xl text-ink-50">
+            {skill}
+            <span className="ml-2 rounded border border-rust-500/60 px-2 py-0.5 align-middle text-xs font-normal text-rust-200">
+              {diffLabel}
+            </span>
+          </div>
+        </div>
+        {bonuses && (
+          <div className="text-xs text-ink-300">{bonuses}</div>
+        )}
+      </div>
+      {c.note && <p className="mt-2 text-ink-300">{c.note}</p>}
       <p className="mt-2 text-xs text-ink-400">
-        提交你的下一次行动即触发检定。
+        选项或输入框提交后立即掷骰；
         {onPush && (
           <>
-            {' · '}
+            也可以
             <button
               type="button"
               disabled={pushDisabled}
               onClick={onPush}
-              className="underline hover:text-rust-500 disabled:opacity-50"
+              className="ml-1 underline hover:text-rust-500 disabled:opacity-50"
             >
               推动上一次失败的检定
             </button>
+            。
           </>
         )}
       </p>

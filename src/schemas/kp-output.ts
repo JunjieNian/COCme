@@ -14,6 +14,24 @@ export const CheckRequest = z.object({
 export type CheckRequest = z.infer<typeof CheckRequest>;
 
 /**
+ * Per-turn visual brief consumed by the image-generation trigger.  MUST be
+ * spoiler-safe (only things the player has already seen / is seeing right
+ * now), MUST be in English (FLUX / SDXL prefer English tokens).  If absent,
+ * the trigger falls back to the static scene.visual_hint.
+ */
+export const VisualBrief = z.object({
+  /** Short English noun phrase describing what the image should show. <= 200 chars. */
+  subject: z.string().min(1).max(200),
+  /** English mood words (comma-separated or free form). <= 120 chars. */
+  mood: z.string().max(120).optional(),
+  /** English palette/lighting hints.  e.g. "cold blue gray, rainlit, sodium streetlamp". <= 120 chars. */
+  palette: z.string().max(120).optional(),
+  /** English things that must NOT appear (e.g. the true identity of a suspect). */
+  must_not_show: z.array(z.string().max(80)).max(8).default([]),
+});
+export type VisualBrief = z.infer<typeof VisualBrief>;
+
+/**
  * The strict JSON contract the KP model must return every turn.
  * Fields:
  *   - visible_narration: the only text the player will be shown this turn.
@@ -21,6 +39,7 @@ export type CheckRequest = z.infer<typeof CheckRequest>;
  *   - required_check: if set, the next player action triggers this check.
  *   - state_ops: proposed state mutations; server validates + applies.
  *   - hidden_notes: scratchpad visible ONLY to the Archivist / next turn's KP.
+ *   - visual_brief: spoiler-safe English image brief for this turn's scene shot.
  */
 export const KpOutput = z.object({
   scene_id: z.string().min(1),
@@ -29,5 +48,6 @@ export const KpOutput = z.object({
   required_check: CheckRequest.nullable().default(null),
   state_ops: z.array(StateOp).default([]),
   hidden_notes: z.array(z.string()).default([]),
+  visual_brief: VisualBrief.nullish(),
 });
 export type KpOutput = z.infer<typeof KpOutput>;

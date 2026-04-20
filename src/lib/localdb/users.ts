@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'node:crypto';
-import { LocalDB, type UserRow } from './db';
+import { LocalDB, type UserRow, type UserVisualSettings } from './db';
 import { decryptSecret, encryptSecret } from '../crypto';
 
 export interface PublicUser {
@@ -101,6 +101,41 @@ export async function getUserDeepSeekKey(userId: string): Promise<string | null>
     // Ciphertext corrupted or SESSION_SECRET changed.  Treat as unset.
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Per-user visual (image generation) settings.
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_VISUAL_SETTINGS: UserVisualSettings = {
+  enabled: false,
+  auto: 'normal',
+  provider: 'comfyui',
+  comfyui_base_url: 'http://127.0.0.1:8188',
+  // One scene shot per KP turn + clue shots — a 20-turn session with a few
+  // clue reveals can hit 25+.  Keep some headroom.
+  max_per_session: 60,
+};
+
+export async function getUserVisualSettings(userId: string): Promise<UserVisualSettings> {
+  const row = await findUserById(userId);
+  return row?.visual_settings ?? { ...DEFAULT_VISUAL_SETTINGS };
+}
+
+export async function setUserVisualSettings(
+  userId: string,
+  patch: Partial<UserVisualSettings>,
+): Promise<UserVisualSettings> {
+  const db = await LocalDB.get();
+  let next: UserVisualSettings = { ...DEFAULT_VISUAL_SETTINGS };
+  await db.mutate(['users'], d => {
+    const row = d.users.find(u => u.id === userId);
+    if (!row) throw new Error('user not found');
+    const current = row.visual_settings ?? { ...DEFAULT_VISUAL_SETTINGS };
+    next = { ...current, ...patch };
+    row.visual_settings = next;
+  });
+  return next;
 }
 
 /**

@@ -1,6 +1,7 @@
 import type { SessionRepo } from '../db/repo.js';
 import { executeTurn, type ExecuteTurnDeps, type ExecuteTurnInput, type ExecuteTurnResult } from './executor.js';
-import { computeTurnDelta } from './persist.js';
+import { computeTurnDelta, type TurnDelta } from './persist.js';
+import type { SessionState } from './state.js';
 
 // ---------------------------------------------------------------------------
 // executeTurnAndCommit: the public entry-point for "play one turn".
@@ -9,22 +10,28 @@ import { computeTurnDelta } from './persist.js';
 //   2. run the executor (which calls the KP + rules engine)
 //   3. compute the delta
 //   4. commit atomically via the repo
-//   5. return the player view + new state
+//   5. return the player view + new state + delta (for post-commit hooks
+//      like the visual-evidence trigger)
 //
 // If anything between (1) and (4) throws, nothing has been committed.  If (4)
 // itself throws, the in-memory new state is discarded so the caller can
 // retry by re-reading from DB.
 // ---------------------------------------------------------------------------
 
+export interface ExecuteTurnAndCommitResult extends ExecuteTurnResult {
+  prev_state: SessionState;
+  delta: TurnDelta;
+}
+
 export async function executeTurnAndCommit(
   repo: SessionRepo,
   sessionId: string,
   input: ExecuteTurnInput,
   deps: ExecuteTurnDeps,
-): Promise<ExecuteTurnResult> {
+): Promise<ExecuteTurnAndCommitResult> {
   const prev = await repo.loadSession(sessionId);
   const result = await executeTurn(prev, input, deps);
   const delta = computeTurnDelta(prev, result.state);
   await repo.commitTurn(delta);
-  return result;
+  return { ...result, prev_state: prev, delta };
 }

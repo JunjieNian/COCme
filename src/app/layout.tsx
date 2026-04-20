@@ -36,8 +36,8 @@ export default async function RootLayout({
                   <Link href="/modules" className="hover:text-rust-500">
                     模组
                   </Link>
-                  <Link href="/sessions/new" className="hover:text-rust-500">
-                    开局
+                  <Link href="/sessions" className="hover:text-rust-500">
+                    跑团
                   </Link>
                   <Link href="/settings" className="hover:text-rust-500">
                     设置

@@ -1,5 +1,5 @@
 import { generateModuleAction } from '../actions';
-import { LongTaskButton } from '@/app/_components/LongTaskButton';
+import { GenerationProgress } from '@/app/_components/GenerationProgress';
 
 export const dynamic = 'force-dynamic';
 
@@ -81,7 +81,18 @@ export default async function NewModulePage({
             className="w-full rounded border border-ink-700 bg-ink-900 px-3 py-2 outline-none focus:border-rust-500"
           />
         </label>
-        <LongTaskButton pendingLabel="生成中（reasoner 思考）">开始生成</LongTaskButton>
+        <GenerationProgress
+          label="生成模组中（reasoner 思考）"
+          expectedSec={60}
+          submitButton={
+            <button
+              type="submit"
+              className="rounded border border-rust-600 bg-rust-700/60 px-5 py-2 hover:bg-rust-600"
+            >
+              开始生成
+            </button>
+          }
+        />
       </form>
     </section>
   );

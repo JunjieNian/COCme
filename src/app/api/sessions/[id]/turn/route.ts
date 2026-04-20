@@ -8,6 +8,9 @@ import { cryptoRng } from '@/rules';
 import { createDeepSeek, streamCallKp } from '@/ai';
 import { requireSessionOwner } from '@/lib/auth';
 import { resolveDeepSeekApiKey } from '@/lib/deepseek-resolver';
+import { withSessionLock } from '@/lib/session-lock';
+import { LocalDB } from '@/lib/localdb/db';
+import { triggerVisualsFromDelta } from '@/visual/trigger';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -70,12 +73,72 @@ export async function POST(
       };
 
       try {
-        const result = await executeTurnAndCommit(
+        const result = await withSessionLock(sessionId, () => executeTurnAndCommit(
           repo,
           sessionId,
           { player_input: playerInput },
-          { rng: cryptoRng, callKp: kp },
-        );
+          {
+            rng: cryptoRng,
+            callKp: kp,
+            onCheckResolved: resolution => {
+              // Flush the dice result to the client *before* the KP starts
+              // generating, so the physical dice animation plays while the
+              // model is thinking.
+              const payload: {
+                summary: string;
+                outcome: typeof resolution.outcome;
+                kind: typeof resolution.kind;
+                roll: number;
+                target: number | null;
+              } =
+                resolution.kind === 'san' && resolution.san_result
+                  ? {
+                      summary: resolution.summary,
+                      outcome: resolution.outcome,
+                      kind: 'san',
+                      roll: resolution.san_result.d100,
+                      target: resolution.san_result.current_san,
+                    }
+                  : resolution.kind === 'skill_like' && resolution.skill_result
+                    ? {
+                        summary: resolution.summary,
+                        outcome: resolution.outcome,
+                        kind: 'skill_like',
+                        roll: resolution.skill_result.roll.chosen,
+                        target: resolution.skill_result.target,
+                      }
+                    : {
+                        summary: resolution.summary,
+                        outcome: resolution.outcome,
+                        kind: resolution.kind,
+                        roll: 0,
+                        target: null,
+                      };
+              send('check_resolved', payload);
+            },
+          },
+        ));
+
+        // Post-commit: enqueue visual-evidence jobs for newly-revealed clues.
+        // Errors here must never break the turn, so catch and log only.
+        try {
+          const db = await LocalDB.get();
+          const session = db.sessions.find(s => s.id === sessionId);
+          const user = db.users.find(u => u.id === userId);
+          if (session && user) {
+            await triggerVisualsFromDelta({
+              userId,
+              sessionId,
+              moduleId: session.module_id,
+              moduleContent: result.state.module,
+              ...(user.visual_settings !== undefined ? { settings: user.visual_settings } : { settings: undefined }),
+              delta: result.delta,
+            });
+          }
+        } catch (err) {
+          console.error('[visual.trigger] failed:', err);
+        }
+
         send('complete', result.view);
       } catch (err) {
         send('error', { message: (err as Error).message });
