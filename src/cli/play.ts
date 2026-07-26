@@ -4,7 +4,7 @@ import { stdin, stdout, stderr } from 'node:process';
 import { InMemorySessionRepo } from '../db/memory.js';
 import { executeTurnAndCommit, pushLastFailedCheck, type KpCaller } from '../engine/index.js';
 import { cryptoRng } from '../rules/index.js';
-import { callKp, createDeepSeek } from '../ai/index.js';
+import { callKp, createCodex } from '../ai/index.js';
 import { buildDemoInvestigator, buildDemoModule } from './fixtures.js';
 import { renderBanner, renderHelp, renderPlayerView } from './render.js';
 import { createScriptedKp } from './scripted-kp.js';
@@ -44,7 +44,7 @@ function printUsageAndExit(code: number): never {
       'Usage: npm run play [-- --live|--dry-run] [-- --turns N]',
       '',
       '  --dry-run     Use offline scripted KP (default).',
-      '  --live        Call real DeepSeek. Requires DEEPSEEK_API_KEY.',
+      '  --live        Call Codex using the local ChatGPT login.',
       '  --turns N     Cap total turns (default 50).',
       '',
     ].join('\n'),
@@ -167,17 +167,9 @@ async function main(): Promise<void> {
 }
 
 function makeLiveKp(): KpCaller {
-  if (!process.env['DEEPSEEK_API_KEY']) {
-    stderr.write(
-      '错误: 未检测到 DEEPSEEK_API_KEY。\n' +
-        '  - 复制 .env.example 到 .env.local 并填入你的 key，然后 `npm run play:live`\n' +
-        '  - 或直接 `npm run play:dry` 跑离线脚本模式\n',
-    );
-    process.exit(1);
-  }
-  const ds = createDeepSeek();
+  const codex = createCodex();
   const kp: KpCaller = async (ctx: unknown) => {
-    return callKp({ context: ctx }, {}, { chat: ds.chat, chatModel: ds.chatModel });
+    return callKp({ context: ctx }, {}, { chat: codex.chat, chatModel: codex.chatModel });
   };
   return kp;
 }

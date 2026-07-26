@@ -36,9 +36,6 @@ export interface UserRow {
   email: string;           // lower-cased
   password_hash: string;   // bcrypt
   created_at: string;
-  /** AES-GCM ciphertext of the user's own DeepSeek API key (optional). */
-  deepseek_api_key_enc?: string;
-  deepseek_api_key_updated_at?: string;
   /** Image-generation settings (optional; absence = disabled). */
   visual_settings?: UserVisualSettings;
 }

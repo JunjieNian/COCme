@@ -6,7 +6,7 @@ import type { VisualHint } from '../schemas/module.js';
 // Principles:
 //   - "Investigative evidence", not "creature poster": the horror is implied
 //     through materials, lighting, and framing — not by showing the monster.
-//   - English prompts (FLUX / SDXL prefer English tokens).
+//   - English prompts (SD-Turbo/SDXL prefer English tokens).
 //   - Never include hidden truth — callers pass only the PlayerView-visible
 //     `spoiler_safe_subject` (or a fallback derived from the public title).
 //   - Avoid official CoC product-identity vocabulary.  Don't say "Call of
@@ -19,7 +19,7 @@ import type { VisualHint } from '../schemas/module.js';
 // horror (Yume Nikki, Ib, Faith, Petscop) — limited palette, hard pixel
 // edges, chunky lighting, lots of negative space.  The ComfyUI workflow
 // also runs a downsample-then-nearest-upsample pass so the image comes
-// out with real pixel blocks, not just FLUX's soft "pixel-ish" aesthetic.
+// out with real pixel blocks rather than a merely pixel-inspired aesthetic.
 // ---------------------------------------------------------------------------
 
 export const STYLE_CORE = [
@@ -133,7 +133,7 @@ export function buildVisualPrompt(ctx: VisualPromptContext): { prompt: string; n
 
 export function fallbackSubjectFromClueName(name: string): string {
   // Prefix with a generic English noun that frames it as a pixel-art item
-  // tile; the Chinese name survives in quotes because FLUX still picks up
+  // tile; the Chinese name survives in quotes because the model still picks up
   // some theming from it even if the final glyphs are garbled (which is
   // fine — pixel art text is expected to be unreadable).
   const trimmed = name.trim().slice(0, 80);

@@ -1,14 +1,14 @@
 /**
- * ComfyUI workflow for FLUX.1 [schnell] with a pixel-art finishing pass.
+ * ComfyUI workflow for SD-Turbo with a pixel-art finishing pass.
  *
  * Pipeline:
- *   CheckpointLoaderSimple (flux1-schnell-fp8.safetensors, all-in-one)
+ *   CheckpointLoaderSimple (sd_turbo.safetensors, all-in-one)
  *     ↓
  *   CLIPTextEncode × 2 (positive / empty negative)
  *     ↓
  *   EmptyLatentImage (`width` × `height`)  ← NB: tiny, e.g. 640×384
  *     ↓
- *   KSampler (4 steps, euler/simple, cfg=1)
+ *   KSampler (1 step, euler_ancestral/sgm_uniform, cfg=1)
  *     ↓
  *   VAEDecode  → full-res decoded image
  *     ↓
@@ -26,10 +26,10 @@
  * look).  Smaller = finer, larger = more Pico-8.
  *
  * Requires:
- *   models/checkpoints/flux1-schnell-fp8.safetensors
+ *   models/checkpoints/sd_turbo.safetensors
  */
 
-export interface FluxSchnellWorkflowParams {
+export interface SdTurboWorkflowParams {
   prompt: string;
   width: number;
   height: number;
@@ -39,10 +39,10 @@ export interface FluxSchnellWorkflowParams {
   pixelBlock?: number;
 }
 
-const CHECKPOINT_NAME = 'flux1-schnell-fp8.safetensors';
+const CHECKPOINT_NAME = 'sd_turbo.safetensors';
 
-export function fluxSchnellWorkflow(p: FluxSchnellWorkflowParams): Record<string, unknown> {
-  const steps = p.steps ?? 4;
+export function sdTurboWorkflow(p: SdTurboWorkflowParams): Record<string, unknown> {
+  const steps = p.steps ?? 1;
   const block = Math.max(1, p.pixelBlock ?? 4);
 
   // Both dims must divide evenly by block for a clean grid.  Round DOWN.
@@ -72,8 +72,8 @@ export function fluxSchnellWorkflow(p: FluxSchnellWorkflowParams): Record<string
         seed: p.seed,
         steps,
         cfg: 1.0,
-        sampler_name: 'euler',
-        scheduler: 'simple',
+        sampler_name: 'euler_ancestral',
+        scheduler: 'sgm_uniform',
         denoise: 1.0,
         model: ['1', 0],
         positive: ['2', 0],

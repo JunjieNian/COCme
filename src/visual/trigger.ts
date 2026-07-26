@@ -23,8 +23,8 @@ export interface TriggerContext {
   delta: TurnDelta;
 }
 
-// Small canvases — FLUX Schnell 4-step + pixel-art post (downsample/upscale)
-// runs in ~1-3s per image on H20.  The UI renders them with
+// Small canvases — SD-Turbo 1-step + pixel-art post (downsample/upscale).
+// The UI renders them with
 // `image-rendering: pixelated` at 2-3x, so the low output resolution is
 // actually the visual style, not a compromise.
 const DEFAULT_WIDTH = 512;

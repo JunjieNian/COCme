@@ -1,31 +1,21 @@
-import type OpenAI from 'openai';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import { KpOutput } from '../schemas/kp-output.js';
 import type { KpOutput as KpOutputT } from '../schemas/kp-output.js';
 import { KP_SYSTEM_PROMPT } from './prompt.js';
+import type { ChatCompletion, ChatMessage } from './provider.js';
 import { withApiRetry } from '../lib/retry.js';
 
-// ---------------------------------------------------------------------------
-// Streaming KP call: opens a DeepSeek chat completion stream (OpenAI-compatible)
-// requesting json_object format, accumulates chunks, and progressively extracts
-// the `visible_narration` field so the caller can forward it to the browser
-// in real time.  Returns the fully-parsed + validated KpOutput when the
-// stream ends.
-//
-// Robustness:
-//   - Unknown state_op variants (the model hallucinating new op names) are
-//     logged and dropped before Zod validation, so the turn still advances
-//     with whatever legit ops were present.
-//   - On Zod failure we retry ONCE non-streaming with the error fed back
-//     into the prompt, so the model can self-correct.
-// ---------------------------------------------------------------------------
+// Codex SDK streams completed agent items rather than JSON token deltas. The
+// browser still uses SSE, but narration is emitted once the structured result
+// is complete. Dice/check events continue to arrive before the Codex call.
 
 export interface StreamKpDeps {
-  client: OpenAI;
+  chat: ChatCompletion;
   model: string;
 }
 
 export interface StreamKpCallbacks {
-  /** Called with the narration text accumulated so far (cumulative, not delta). */
+  /** Called with the complete narration once Codex returns valid JSON. */
   onNarrationChange?: (text: string) => void;
 }
 
@@ -33,14 +23,12 @@ export interface StreamKpOptions {
   systemPrompt?: string;
   temperature?: number;
   signal?: AbortSignal;
-  /** Override the repair-retry budget.  Default 1. */
+  /** Override the repair-retry budget. Default 1. */
   maxRepairAttempts?: number;
 }
 
-const NARRATION_RE = /"visible_narration"\s*:\s*"((?:[^"\\]|\\.)*)(?:"|$)/s;
-
-/** The 14 legitimate StateOp discriminator values.  Keep in sync with
- *  src/schemas/state-op.ts — any addition there should be added here too. */
+/** The legitimate StateOp discriminator values. Keep in sync with
+ * src/schemas/state-op.ts. */
 const KNOWN_OPS: ReadonlySet<string> = new Set([
   'advance_clock',
   'change_scene',
@@ -67,137 +55,69 @@ export async function streamCallKp(
   const system = opts.systemPrompt ?? KP_SYSTEM_PROMPT;
   const maxRepairs = opts.maxRepairAttempts ?? 1;
   const userContent = typeof context === 'string' ? context : JSON.stringify(context);
+  const baseMessages: ChatMessage[] = [
+    { role: 'system', content: system },
+    { role: 'user', content: userContent },
+  ];
+  const outputSchema = zodToJsonSchema(KpOutput, { target: 'openAi' });
 
-  // ---- First pass: streaming ------------------------------------------------
-  // The entire "open stream + accumulate + progressively emit narration" block
-  // is wrapped in withApiRetry so that a transient 429/5xx/connection-drop at
-  // any point (including mid-stream) silently restarts.  On each retry we
-  // clear the partially-emitted narration on the client so fragments from the
-  // aborted attempt don't prefix the fresh output.
-  const firstPass = await withApiRetry(
-    async () => {
-      const stream = await deps.client.chat.completions.create(
-        {
-          model: deps.model,
-          messages: [
-            { role: 'system', content: system },
-            { role: 'user', content: userContent },
-          ],
-          response_format: { type: 'json_object' },
-          stream: true,
-          temperature: opts.temperature ?? 0.8,
-        },
-        opts.signal ? { signal: opts.signal } : {},
-      );
-
-      let accumulated = '';
-      let lastNarrationLen = 0;
-
-      for await (const chunk of stream) {
-        const delta = chunk.choices[0]?.delta?.content;
-        if (!delta) continue;
-        accumulated += delta;
-
-        const m = accumulated.match(NARRATION_RE);
-        if (!m) continue;
-        const matched = m[1] ?? '';
-        if (matched.length <= lastNarrationLen) continue;
-
-        let text: string | null = null;
-        try {
-          text = JSON.parse(`"${matched}"`) as string;
-        } catch {
-          text = null;
-        }
-        if (text !== null) {
-          lastNarrationLen = matched.length;
-          callbacks.onNarrationChange?.(text);
-        }
-      }
-
-      return { accumulated };
-    },
+  const call = (messages: ChatMessage[]) => withApiRetry(
+    () => deps.chat({
+      model: deps.model,
+      messages,
+      response_format: { type: 'json_object' },
+      output_schema: outputSchema,
+      ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
+      ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
+    }),
     {
       retries: 3,
       delays: [500, 1500, 4000],
-      onRetry: () => {
-        // Wipe whatever partial narration the aborted attempt leaked, so the
-        // next attempt's stream starts from a clean slate on the client.
-        callbacks.onNarrationChange?.('');
-      },
+      onRetry: () => callbacks.onNarrationChange?.(''),
       ...(opts.signal ? { signal: opts.signal } : {}),
     },
   );
 
-  const accumulated = firstPass.accumulated;
+  const first = await call(baseMessages);
+  let previousOutput = first.content ?? '';
+  let lastError: unknown = previousOutput ? null : new Error('empty content');
 
-  // ---- First-pass validate (with lenient state_ops scrub) -------------------
-  const firstParsed = tryParseJson(accumulated);
-  if (firstParsed) {
-    const scrub1 = scrubUnknownOps(firstParsed, 'stream');
-    const r1 = KpOutput.safeParse(scrub1.value);
-    if (r1.success) return r1.data;
-
-    // ---- Repair retry (non-streaming) -------------------------------------
-    let lastErr: unknown = r1.error;
-    for (let attempt = 0; attempt < maxRepairs; attempt++) {
-      // Wrap the repair HTTP call itself in the same transient-error retry
-      // logic: schema-repair is orthogonal to transport reliability, and a
-      // 429/5xx on the repair attempt shouldn't blow up the whole turn.
-      const retry = await withApiRetry(
-        () => deps.client.chat.completions.create(
-          {
-            model: deps.model,
-            messages: [
-              { role: 'system', content: system },
-              { role: 'user', content: userContent },
-              { role: 'assistant', content: accumulated },
-              {
-                role: 'user',
-                content:
-                  `上一次输出不符合 schema。错误：${errorText(lastErr)}。\n` +
-                  `合法的 state_ops.op 仅有：${[...KNOWN_OPS].join(', ')}。\n` +
-                  `请严格按 schema 重新输出一个合法的 JSON 对象，仅使用合法的 op 枚举值，不要添加解释或 Markdown。`,
-              },
-            ],
-            response_format: { type: 'json_object' },
-            temperature: (opts.temperature ?? 0.8) * 0.5,  // lower temp for repair
-          },
-          opts.signal ? { signal: opts.signal } : {},
-        ),
-        {
-          retries: 3,
-          delays: [500, 1500, 4000],
-          ...(opts.signal ? { signal: opts.signal } : {}),
-        },
-      );
-      const content = retry.choices[0]?.message?.content;
-      if (!content) {
-        lastErr = new Error('empty repair content');
-        continue;
+  for (let attempt = 0; attempt <= maxRepairs; attempt++) {
+    if (previousOutput) {
+      const parsed = tryParseJson(previousOutput);
+      if (parsed !== null) {
+        const scrubbed = scrubUnknownOps(parsed, attempt === 0 ? 'codex' : 'repair');
+        const result = KpOutput.safeParse(scrubbed.value);
+        if (result.success) {
+          callbacks.onNarrationChange?.(result.data.visible_narration);
+          return result.data;
+        }
+        lastError = result.error;
+      } else {
+        lastError = new Error('JSON parse failed');
       }
-      const retryParsed = tryParseJson(content);
-      if (!retryParsed) {
-        lastErr = new Error('repair JSON parse failed');
-        continue;
-      }
-      const scrub2 = scrubUnknownOps(retryParsed, 'repair');
-      const r2 = KpOutput.safeParse(scrub2.value);
-      if (r2.success) {
-        // Repaired narration is what the user "really" got this turn; replay it.
-        const narr = (scrub2.value as { visible_narration?: unknown })?.visible_narration;
-        if (typeof narr === 'string') callbacks.onNarrationChange?.(narr);
-        return r2.data;
-      }
-      lastErr = r2.error;
     }
-    throw new Error(`streamCallKp: schema mismatch after repair: ${errorText(lastErr)}`);
+
+    if (attempt === maxRepairs) break;
+
+    const repair = await call([
+      ...baseMessages,
+      { role: 'assistant', content: previousOutput },
+      {
+        role: 'user',
+        content:
+          `The previous output did not match the schema. Error: ${errorText(lastError)}.\n` +
+          `Valid state_ops.op values are: ${[...KNOWN_OPS].join(', ')}.\n` +
+          'Return one corrected JSON object only, with no Markdown or explanation.',
+      },
+    ]);
+    previousOutput = repair.content ?? '';
   }
 
-  throw new Error('streamCallKp: could not parse final JSON from stream');
+  throw new Error(`streamCallKp: schema mismatch after repair: ${errorText(lastError)}`);
 }
 
-function tryParseJson(raw: string): unknown {
+function tryParseJson(raw: string): unknown | null {
   try {
     return JSON.parse(raw);
   } catch {
@@ -216,9 +136,8 @@ function errorText(err: unknown): string {
 }
 
 /**
- * Drop any state_ops[] entry whose `op` isn't in KNOWN_OPS, so the KP
- * hallucinating a novel op name doesn't torpedo the whole turn.  Returns the
- * (potentially-rewritten) object and logs what got dropped.
+ * Drop state_ops[] entries whose `op` is unknown, so one hallucinated
+ * operation does not discard an otherwise usable turn.
  */
 function scrubUnknownOps(root: unknown, tag: string): { value: unknown; dropped: number } {
   if (!root || typeof root !== 'object') return { value: root, dropped: 0 };
@@ -235,7 +154,6 @@ function scrubUnknownOps(root: unknown, tag: string): { value: unknown; dropped:
     }
   }
   if (dropped.length > 0) {
-    // eslint-disable-next-line no-console
     console.warn(`[KP:${tag}] dropped ${dropped.length} unknown state_ops:`, dropped.map(d => d.op));
   }
   return { value: { ...obj, state_ops: kept }, dropped: dropped.length };

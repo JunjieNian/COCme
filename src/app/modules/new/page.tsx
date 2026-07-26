@@ -14,8 +14,8 @@ export default async function NewModulePage({
     <section className="mx-auto max-w-2xl space-y-6">
       <h1 className="font-serif text-2xl">AI 生成新模组</h1>
       <p className="text-sm text-ink-300">
-        输入一些关键词，由 DeepSeek 的 reasoner 生成一份 2-3 小时的单人调查模组。
-        reasoner 思考较久，通常 <strong className="text-ink-100">30 秒 - 2 分钟</strong>；
+        输入一些关键词，由本机 Codex 登录调用 ChatGPT 生成一份 2-3 小时的单人调查模组。
+        通常需要 <strong className="text-ink-100">30 秒 - 2 分钟</strong>；
         按钮上会显示实时耗时，生成期间请保持本页打开、勿重复点击。
       </p>
       <p className="text-xs text-ink-400">
@@ -82,7 +82,7 @@ export default async function NewModulePage({
           />
         </label>
         <GenerationProgress
-          label="生成模组中（reasoner 思考）"
+          label="Codex 正在生成模组"
           expectedSec={60}
           submitButton={
             <button

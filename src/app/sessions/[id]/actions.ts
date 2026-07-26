@@ -13,7 +13,7 @@ import { LocalDB } from '@/lib/localdb/db';
 import { withSessionLock } from '@/lib/session-lock';
 
 // Turn submission now lives in the streaming POST /api/sessions/[id]/turn
-// route handler so the UI can render narration as DeepSeek writes it.  This
+// route handler so the UI can receive narration when Codex completes. This
 // file keeps only the non-streaming actions.
 
 export async function pushAction(sessionId: string): Promise<PlayerView> {

@@ -4,7 +4,7 @@ import type { KpOutput } from '../schemas/kp-output.js';
 /**
  * Offline "KP" that plays a tiny 6-turn scripted adventure against the
  *仓库试玩 fixture module.  Used by --dry-run so developers can smoke-test
- * the engine loop without burning DeepSeek tokens.
+ * the engine loop without consuming Codex/ChatGPT credits.
  *
  * The script is deterministic and does not read player input.  Its purpose
  * is to exercise every feature:

@@ -61,7 +61,7 @@ describe('generateModule', () => {
     const { module, warnings } = await generateModule(
       { theme: '码头幽灵', era: '1920s', owner_id: 'u1' },
       {},
-      { chat, reasonModel: 'deepseek-reasoner', chatModel: 'deepseek-chat' },
+      { chat, reasonModel: 'gpt-5.4-mini', chatModel: 'gpt-5.4-mini' },
     );
     expect(module.source_kind).toBe('ai_generated');
     expect(module.title).toBe('测试模组');

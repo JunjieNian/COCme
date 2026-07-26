@@ -84,7 +84,7 @@ StateOp 的 op 字段只允许以下枚举值之一（其它一律不认）：
 
 每回合的场景图简报（visual_brief）：
 
-V1. 每回合**都要**填 visual_brief。这是喂给 text-to-image 模型（FLUX/SDXL）的英文简报，让生成的定场图紧扣你这回合写的画面——光线、材质、取景、气氛。缺失 / 空 subject 视为降级到模组的静态 visual_hint，风格会漂离当下叙事。
+V1. 每回合**都要**填 visual_brief。这是喂给 text-to-image 模型（SD-Turbo/SDXL）的英文简报，让生成的定场图紧扣你这回合写的画面——光线、材质、取景、气氛。缺失 / 空 subject 视为降级到模组的静态 visual_hint，风格会漂离当下叙事。
 
 V2. 语言和内容约束：
   - 必须 **英文**；subject 不超过 200 字符，mood / palette 不超过 120 字符。

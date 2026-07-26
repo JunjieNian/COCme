@@ -5,9 +5,8 @@ import {
   type KpCaller,
 } from '@/engine';
 import { cryptoRng } from '@/rules';
-import { createDeepSeek, streamCallKp } from '@/ai';
+import { createCodex, streamCallKp } from '@/ai';
 import { requireSessionOwner } from '@/lib/auth';
-import { resolveDeepSeekApiKey } from '@/lib/deepseek-resolver';
 import { withSessionLock } from '@/lib/session-lock';
 import { LocalDB } from '@/lib/localdb/db';
 import { triggerVisualsFromDelta } from '@/visual/trigger';
@@ -46,15 +45,8 @@ export async function POST(
     return Response.json({ error: 'invalid JSON body' }, { status: 400 });
   }
 
-  let apiKey: string;
-  try {
-    apiKey = await resolveDeepSeekApiKey(userId);
-  } catch (err) {
-    return Response.json({ error: (err as Error).message }, { status: 400 });
-  }
-
   const encoder = new TextEncoder();
-  const ds = createDeepSeek({ apiKey });
+  const codex = createCodex();
   const repo = new LocalSessionRepo();
 
   const stream = new ReadableStream<Uint8Array>({
@@ -67,7 +59,7 @@ export async function POST(
       const kp: KpCaller = async (ctx: unknown) => {
         return streamCallKp(
           ctx,
-          { client: ds.client, model: ds.chatModel },
+          { chat: codex.chat, model: codex.chatModel },
           { onNarrationChange: text => send('narration', { text }) },
         );
       };

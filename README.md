@@ -2,21 +2,21 @@
 
 基于 **BRP / CoC 7e** 规则的单人恐怖调查跑团网页引擎。建一张调查员卡，选一份模组（或让 AI 现写一份），剩下的 KP、叙事、检定、落库全都交给服务端。可选地挂一个本地 ComfyUI，每回合顺便产一张 16-bit 像素风的场景图。
 
-DeepSeek 负责"会讲故事"，纯 TypeScript 写的规则引擎负责"会定成败"——模型不碰骰子，规则引擎不编剧。两层分开，各干各的，谁也不能越界。
+Codex 通过本机 ChatGPT 登录负责"会讲故事"，纯 TypeScript 写的规则引擎负责"会定成败"——模型不碰骰子，规则引擎不编剧。两层分开，各干各的，谁也不能越界。
 
-![routes-20](https://img.shields.io/badge/routes-19-8b3a23) ![tests-74](https://img.shields.io/badge/tests-74%20passing-emerald) ![nextjs-15](https://img.shields.io/badge/Next.js-15-black) ![ts](https://img.shields.io/badge/TypeScript-strict-3178c6) ![visuals](https://img.shields.io/badge/visuals-ComfyUI%20%2B%20FLUX-7c3aed)
+![routes-20](https://img.shields.io/badge/routes-19-8b3a23) ![tests-76](https://img.shields.io/badge/tests-76%20passing-emerald) ![nextjs-15](https://img.shields.io/badge/Next.js-15-black) ![ts](https://img.shields.io/badge/TypeScript-strict-3178c6) ![visuals](https://img.shields.io/badge/visuals-ComfyUI%20%2B%20SD--Turbo-7c3aed)
 
 ---
 
 ## 这是什么
 
 - **单人、离线优先**：所有数据默认存在本机的 `./data/*.json`，不依赖任何云。
-- **端到端跑一局**：注册登录 → 建卡（实时技能点预算） → AI 生成/导入模组 → 开局 → 流式叙事 + 骰子动画 + 像素插画 → 局后复盘 + 成长应用。
-- **KP 是 DeepSeek**：`deepseek-chat` 负责每回合的叙事/选项，`deepseek-reasoner` 负责生成/整理模组结构。模型只"建议掷什么检定"，不掷骰、不改状态。
-- **规则引擎纯 TS**：d100、奖励/惩罚骰、难度分级、推动检定、对抗、SAN 检定，74 个 vitest 覆盖。
-- **流式回合**：每回合 KP 的叙事通过 SSE 边写边显示，不用盯着 loading 转圈 30 秒。
-- **可选本地 AI 绘图**：挂一个 ComfyUI（FLUX.1 [schnell]），每回合 ~2 秒出一张 640×384 的低饱和像素风定场图；每条线索也自带一张证物图。跑在本地 GPU，图不上云。
-- **每用户自己填 key**：`/settings` 里粘贴 DeepSeek / ComfyUI 配置，AES-256-GCM 加密落盘。
+- **端到端跑一局**：注册登录 → 建卡（实时技能点预算） → AI 生成/导入模组 → 开局 → SSE 叙事 + 骰子动画 + 像素插画 → 局后复盘 + 成长应用。
+- **KP 是 Codex**：Codex SDK 复用本机 ChatGPT 登录，默认使用低成本的 `gpt-5.4-mini` 和 `low` 推理强度。模型只"建议掷什么检定"，不掷骰、不改状态。
+- **规则引擎纯 TS**：d100、奖励/惩罚骰、难度分级、推动检定、对抗、SAN 检定，76 个 vitest 覆盖。
+- **SSE 回合**：检定结果先通过 SSE 下发；Codex 完成结构化输出后再下发叙事和最终视图。
+- **可选本地 AI 绘图**：挂一个 ComfyUI（SD-Turbo），每回合生成一张 640×384 的低饱和像素风定场图；每条线索也自带一张证物图。跑在本地 GPU，图不上云。
+- **无需 API key**：AI 调用复用本机 `codex login` 的 ChatGPT 登录；`/settings` 只需配置可选的 ComfyUI。
 
 ---
 
@@ -41,8 +41,8 @@ DeepSeek 负责"会讲故事"，纯 TypeScript 写的规则引擎负责"会定�
 
 ### 跑团
 
-- **自动流式开场**：新 session 自动触发一次回合（player_input=null），~1000-1500 字的文学化开场，不抛检定只铺气氛
-- **流式叙事**：`/api/sessions/[id]/turn` 是一个 SSE route，KP 一边生成文字一边显示，边上实时脉动光标
+- **自动开场**：新 session 自动触发一次回合（player_input=null），~1000-1500 字的文学化开场，不抛检定只铺气氛
+- **SSE 叙事**：`/api/sessions/[id]/turn` 是一个 SSE route；Codex SDK 返回完整结构化结果后，叙事与最终视图依次下发
 - **每回合顺便出一张场景图**：commit 成功后异步派发 job 给 ComfyUI，图好了挂在叙事卡上方。KP 每回合填一段英文 `visual_brief`（spoiler-safe）做 prompt，让图贴合当前氛围
 - **骰子动画**：十位 + 个位两颗摇 ~900ms 落定，按 outcome 高亮（暴击金 / 困难绿 / 失败锈色 / 大失败暗红）。check_resolved 事件通过 SSE 提前下发，让骰子动画和 KP 写稿并行
 - **检定结果影响叙事**：KP system prompt 里有强约束（R1-R5），成功必须写出"捕获到细节"、失败必须写"没看清/抓空"，并用不同的图构图反映（成功 → 聚焦清晰近景；失败 → 空/模糊/远景）
@@ -59,9 +59,9 @@ DeepSeek 负责"会讲故事"，纯 TypeScript 写的规则引擎负责"会定�
 
 ### 视觉层（可选 ComfyUI）
 
-- **模型**：FLUX.1 [schnell] all-in-one 检查点（17 GB 单文件，含 UNet + dual CLIP + VAE）
-- **分辨率**：场景 640×384、证物 512×512；H20 上 4-step ~2 秒一张
-- **像素风 pipeline**：工作流在 VAE decode 后先 area-downsample 到 1/4 分辨率，再 nearest-exact 回到原尺寸，出真"块状像素"而不是 FLUX 的软像素；UI 用 `image-rendering: pixelated` 渲染
+- **模型**：SD-Turbo all-in-one 检查点（约 5.2 GB，适配本机 RTX 4070 8 GB）
+- **分辨率**：场景 640×384、证物 512×512；单步采样
+- **像素风 pipeline**：工作流在 VAE decode 后先 area-downsample 到 1/4 分辨率，再 nearest-exact 回到原尺寸，输出清晰的块状像素；UI 用 `image-rendering: pixelated` 渲染
 - **风格**：低饱和、16-32 色索引调色板、抖动阴影、复古恐怖游戏语汇（Yume Nikki / Ib / Faith / Petscop 参照），负向词屏蔽写实 / 卡通 / 鲜艳
 - **触发**：每个 KP 回合自动生成场景图；`reveal_clue` 事件触发证物图；都是异步 job，失败不影响回合推进
 - **Prompt 来源**：优先用 KP 本回合的 `visual_brief`（英文，spoiler-safe），回落到模组的 `visual_hint`，再回落到模板 fallback
@@ -72,7 +72,7 @@ DeepSeek 负责"会讲故事"，纯 TypeScript 写的规则引擎负责"会定�
 
 - 本地邮箱 + 密码注册（bcryptjs 10 轮），零外部服务
 - HMAC 签名的 session cookie，14 天有效
-- 每用户自选 DeepSeek key + ComfyUI URL：`/settings` 里粘贴后 AES-256-GCM 加密落 `data/users.json`
+- 每用户可在 `/settings` 配置自己的 ComfyUI URL；Codex 登录由本机统一提供
 - 所有业务数据在 `./data/` 下的 JSON 文件（`users / investigators / modules / sessions / turns / checks / session_events / session_clues / session_npcs / growth_records / visual_assets` 等）
 - 生成的图：`./data/assets/visuals/<uuid>.png`
 - Per-session 异步互斥锁保护 `load → execute → commit` 免于并发回合竞态
@@ -86,9 +86,9 @@ DeepSeek 负责"会讲故事"，纯 TypeScript 写的规则引擎负责"会定�
 - **Tailwind CSS v3** (`ink` / `rust` 双色调)
 - **Zod** — 所有 AI 输出都走 schema 校验
 - **bcryptjs** — 密码哈希（无 native 依赖）
-- **OpenAI SDK** 指向 `https://api.deepseek.com` — 原生 JSON 结构化输出 + 流式
-- **ComfyUI** (可选) — 本地 FLUX.1 [schnell] 推理
-- **Vitest** — 74 个规则引擎 / 建卡器 / 模组管道 / 存储层单元测试
+- **Codex SDK** — 复用本机 ChatGPT 登录，Responses 结构化输出，不直接调用 OpenAI API
+- **ComfyUI** (可选) — 本地 SD-Turbo 推理
+- **Vitest** — 76 个规则引擎 / 建卡器 / 模组管道 / 存储层单元测试
 
 ---
 
@@ -97,8 +97,8 @@ DeepSeek 负责"会讲故事"，纯 TypeScript 写的规则引擎负责"会定�
 ### 前置条件
 
 - Node.js **20+**
-- 一把 DeepSeek API key（可在 `/settings` 填；也可提前写到 `.env.local`）
-- （可选）本机一张至少 12 GB VRAM 的 NVIDIA GPU 用于 ComfyUI + FLUX Schnell fp8
+- Codex CLI 已登录 ChatGPT（先运行 `codex login status` 检查）
+- （可选）本机 NVIDIA GPU；当前 SD-Turbo 工作流按 RTX 4070 8 GB 配置
 
 ### 装依赖 + 启动
 
@@ -110,8 +110,9 @@ npm install
 # 配一份 .env.local
 cat > .env.local <<EOF
 SESSION_SECRET=$(openssl rand -hex 32)
-# 下面这一行可留空 —— 每个用户可在 /settings 里自己填
-DEEPSEEK_API_KEY=
+CODEX_MODEL_CHAT=gpt-5.4-mini
+CODEX_MODEL_REASON=gpt-5.4-mini
+CODEX_REASONING_EFFORT=low
 EOF
 
 # 开发模式（热加载）
@@ -122,7 +123,7 @@ npm run build
 npm start
 ```
 
-打开 <http://localhost:3000>（或你选的端口）。注册邮箱 + 密码 → `/settings` 粘 DeepSeek key → 然后：
+打开 <http://localhost:3000>（或你选的端口）。注册邮箱 + 密码后即可：
 
 ```
 /investigators/new  →  建卡（填属性 + 分配技能）
@@ -143,40 +144,13 @@ PORT=7878 npm start
 
 ### 可选：挂本地 ComfyUI 出图
 
-仓库里已经有一份可用安装脚本的痕迹（`ComfyUI/`，gitignore），按这个顺序即可：
+本机安装完成后，ComfyUI 位于被 Git 忽略的 `ComfyUI/` 目录，模型为适配 8 GB 显存的 SD-Turbo：
 
-```bash
-# 1. 拉 ComfyUI
-git clone https://github.com/comfyanonymous/ComfyUI ./ComfyUI     # 或 https://gitee.com/mirrors/ComfyUI.git 镜像
-cd ComfyUI
-
-# 2. 建 venv（Python 3.10-3.12 都行）
-python3.11 -m venv venv
-# 把 pip cache 挪开（避免把系统盘填满）
-export PIP_CACHE_DIR="$PWD/pip-cache"
-export TMPDIR="$PWD/tmp"
-mkdir -p "$PIP_CACHE_DIR" "$TMPDIR"
-
-# 3. 装 torch (CUDA 12.6 + tsinghua 镜像)
-./venv/bin/pip install \
-  -i https://pypi.tuna.tsinghua.edu.cn/simple \
-  --extra-index-url https://download.pytorch.org/whl/cu126 \
-  torch torchvision torchaudio torchsde
-
-# 4. 装 ComfyUI 其它依赖
-./venv/bin/pip install -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
-
-# 5. 下 FLUX Schnell all-in-one 检查点 (~17 GB)
-mkdir -p models/checkpoints
-curl -fsSL --retry 3 -o models/checkpoints/flux1-schnell-fp8.safetensors \
-  https://hf-mirror.com/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors
-
-# 6. 启动（COMFY_GPU 锁定一张卡；默认 cuda:1）
-cd ..
-./ComfyUI/start.sh    # 默认 127.0.0.1:8188
+```powershell
+npm run comfy
 ```
 
-然后在 `/settings` 里勾上"启用证物图像生成"，ComfyUI 地址写 `http://127.0.0.1:8188`，保存。下一回合就会有图。
+脚本固定使用 `cuda:0`（本机 RTX 4070）、低显存模式和 `127.0.0.1:8188`。图片生成默认开启，也可在 `/settings` 里关闭或调整。
 
 ---
 
@@ -196,7 +170,7 @@ src/
 │   ├── api/visuals/session/[id]/     当前 session 所有图片资产
 │   ├── api/visuals/[id]/image/       读一张图的 PNG 字节
 │   ├── dice-lab/         独立骰子动画调试页
-│   ├── settings/         DeepSeek key + 图像开关 + 危险区域
+│   ├── settings/         Codex 状态 + 图像开关 + 危险区域
 │   ├── sign-in / sign-up / sign-out
 │   └── layout.tsx, page.tsx, globals.css
 │
@@ -223,15 +197,15 @@ src/
 │
 ├── ai/                   AI provider 层
 │   ├── provider.ts       ChatCompletion 抽象类型
-│   ├── deepseek.ts       createDeepSeek(apiKey) → {chat, client, chatModel, reasonModel}
+│   ├── codex.ts          createCodex() → {chat, chatModel, reasonModel}
 │   ├── json-call.ts      callJsonWithSchema — 自动 retry-on-schema-fail
-│   ├── stream.ts         streamCallKp — SSE + 部分 JSON 渐进解析 + 未知 op 过滤
+│   ├── stream.ts         streamCallKp — Codex 结构化输出 + 未知 op 过滤
 │   └── prompt.ts         KP 系统提示（含开场白特例 / 检定结果硬规则 / visual_brief 指引）
 │
 ├── visual/               图像生成层
 │   ├── types.ts          ImageProvider 接口
 │   ├── prompt.ts         像素恐怖游戏风格模板 + preset + 低饱和负向词
-│   ├── workflows/flux-schnell.ts  ComfyUI workflow（含像素块 downsample/upscale）
+│   ├── workflows/sd-turbo.ts      ComfyUI workflow（含像素块 downsample/upscale）
 │   ├── providers/comfyui.ts       /prompt → /history 轮询 → /view 取图
 │   ├── trigger.ts        每回合场景 + 线索揭示 → 异步 job
 │   └── worker.ts         单进程 in-memory 队列 + globalThis 锚定
@@ -260,11 +234,9 @@ src/
 │   ├── auth.ts           requireUser / requireSessionOwner / cookie helpers
 │   ├── session-cookie.ts HMAC 签名 cookie
 │   ├── session-lock.ts   per-sessionId 异步互斥锁（抗并发回合）
-│   ├── crypto.ts         AES-256-GCM for per-user DeepSeek keys
 │   ├── localdb/db.ts     LocalDB 单进程持久化 (globalThis singleton + mtime 失效
 │   │                      + 故障隔离的 mutate writeQueue)
-│   ├── localdb/users.ts  注册 / 登录 / key 管理 / visual settings
-│   ├── deepseek-resolver.ts  用户 key → env fallback 优先级
+│   ├── localdb/users.ts  注册 / 登录 / visual settings
 │   └── supabase/*        (未使用) Supabase 客户端
 │
 └── cli/                  终端试玩（离线脚本 KP，开发辅助）
@@ -356,11 +328,11 @@ event: complete        data: <full PlayerView>                          ← 落�
 
 ### 6. 像素风图像的两层降噪
 
-- **风格层**：STYLE_CORE / NEGATIVE_BASE 用大量像素恐怖游戏语汇（"16-bit horror adventure screenshot / limited indexed palette / hard pixel edges / dithered gradients"），FLUX 朝像素美学走
-- **几何层**：ComfyUI 工作流在 VAEDecode 后插两个 ImageScale —— `area` 算法下采样到 1/4（每 4×4 像素平均成一色），再 `nearest-exact` 回到原尺寸。出的是**真块状像素**，跟 FLUX 自己输出的"像素风味软边"不是一回事
+- **风格层**：STYLE_CORE / NEGATIVE_BASE 用大量像素恐怖游戏语汇（"16-bit horror adventure screenshot / limited indexed palette / hard pixel edges / dithered gradients"），让 SD-Turbo 朝像素美学走
+- **几何层**：ComfyUI 工作流在 VAEDecode 后插两个 ImageScale —— `area` 算法下采样到 1/4（每 4×4 像素平均成一色），再 `nearest-exact` 回到原尺寸，输出真块状像素
 - **渲染层**：前端 `<img>` 挂 `image-rendering: pixelated`，浏览器缩放时不插值抹平
 
-单张 640×384 在 H20 上 4-step 约 2 秒，生成一整局 20+ 张图也不拖节奏。
+单张 640×384 使用 SD-Turbo 单步采样，首次会加载模型，后续图片明显更快。
 
 ---
 
@@ -368,14 +340,16 @@ event: complete        data: <full PlayerView>                          ← 落�
 
 | 变量 | 必需 | 说明 |
 |------|------|------|
-| `SESSION_SECRET` | ✅ ≥16 字符 | HMAC 签名 session cookie + 派生 KEK 加密用户 DeepSeek key |
-| `DEEPSEEK_API_KEY` | 可选 | 服务器级默认 key，fallback；每用户可在 `/settings` 覆盖 |
+| `SESSION_SECRET` | ✅ ≥16 字符 | HMAC 签名 session cookie |
+| `CODEX_MODEL_CHAT` | 可选 | KP 模型，默认 `gpt-5.4-mini` |
+| `CODEX_MODEL_REASON` | 可选 | 模组生成/整理模型，默认跟随 `CODEX_MODEL_CHAT` |
+| `CODEX_REASONING_EFFORT` | 可选 | 推理强度，默认 `low` |
 | `LOCAL_DATA_DIR` | 可选 | 数据文件目录，默认 `./data` |
 | `NEXT_PUBLIC_SUPABASE_URL` | 未用 | Supabase 云端模式预留 |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | 未用 | 同上 |
 | `SUPABASE_SERVICE_ROLE_KEY` | 未用 | 同上 |
 
-`SESSION_SECRET` 生成：`openssl rand -hex 32`。**重要：换了这个变量后所有用户存的 DeepSeek key 都解不开，得让用户重新登录 + 重填 key。**
+`SESSION_SECRET` 生成：`openssl rand -hex 32`。更换后已有登录 cookie 会失效，用户需要重新登录。
 
 ComfyUI 的地址不走环境变量，每个用户在 `/settings` 里单独配（每个用户可能跑自己的实例）。
 
@@ -388,18 +362,17 @@ npm run dev            # 开发模式，热加载
 npm run build          # 生产构建到 .next/
 npm start              # 生产启动（要先 build）
 npm run typecheck      # tsc --noEmit
-npm test               # vitest run，74 项单元测试
+npm test               # vitest run，76 项单元测试
 npm run test:watch     # vitest 监听模式
 
 # 离线 CLI 跑团（开发辅助，走脚本 KP 不烧 token）
 npm run play:dry
 
-# 真 DeepSeek 跑 CLI
+# 通过本机 Codex / ChatGPT 登录跑 CLI
 npm run play:live
 
-# 可选：本地 ComfyUI
-./ComfyUI/start.sh                         # 默认 cuda:1, port 8188
-COMFY_GPU=2 COMFY_PORT=8189 ./ComfyUI/start.sh
+# 本地 ComfyUI（RTX 4070，127.0.0.1:8188）
+npm run comfy
 ```
 
 ---
@@ -410,12 +383,12 @@ COMFY_GPU=2 COMFY_PORT=8189 ./ComfyUI/start.sh
 - 生成的图：`./data/assets/visuals/<uuid>.png`
 - 密码：bcrypt 10 轮哈希
 - Session cookie：`<userId>.<issuedMs>.<HMAC-SHA256>`，timing-safe 校验，14 天 TTL
-- 用户的 DeepSeek key：AES-256-GCM，KEK = `SHA256(SESSION_SECRET || "::deepseek-key-kek")`，永不回显
-- 每次 AI 调用的 key 只存在于单次请求的内存里，不打印到日志
+- AI 调用不接收 API key，复用 Codex CLI 保存的 ChatGPT 登录
+- Codex 以只读沙箱、禁用工具和禁用联网搜索的方式运行
 - `LocalDB.mutate` 容错 —— 一次 throw 不会污染整个写队列（早期 bug 曾因此让"注册"也继承了另一条 commit 的报错）
 - `/settings` 危险区域：两个明确的 "清图片 / 清存档" 操作，都需要在确认框里输入"删除"。只删当前用户 owner 的数据
 
-威胁模型：本地单机 / 小型实验室部署。**不防 root 攻击者**（他们读得到 `SESSION_SECRET`，能解密所有 key）。这对离线模式来说是合理取舍。
+威胁模型：本地单机 / 小型实验室部署。拥有本机账户权限的用户仍可访问本地存档与 Codex 登录态。
 
 ---
 
@@ -423,7 +396,7 @@ COMFY_GPU=2 COMFY_PORT=8189 ./ComfyUI/start.sh
 
 - **Embeddings**：`module_chunks.embedding` 列留着，目前检索走 KP 自己过滤模组切片
 - **多人 / 协作**：完全单人
-- **语音 KP**：可能接 DeepSeek Voice / OpenAI Realtime，当前不做
+- **语音 KP**：当前不做
 - **密码重置 / 邮件验证**：本地模式无邮件能力
 - **手机响应式**：桌面优先，手机大致能看但抽屉/侧栏布局未优化
 - **国际化**：纯中文 UI
@@ -437,7 +410,7 @@ COMFY_GPU=2 COMFY_PORT=8189 ./ComfyUI/start.sh
 
 - **规则基础**：BRP / Chaosium 的 CoC 7e；本引擎以 BRP 通用骨架设计，CoC 专属内容（神话技能 / Lovecraftian 专有名词等）保留给上层模组内容
 - **内容审慎**：所有生成提示里明确避让 Chaosium 的 Product Identity（神话神祇专有名词、"Call of Cthulhu" 商标字样、官方 artwork 风格描述），用通用恐怖意象表达
-- **图像模型**：FLUX.1 [schnell]（Apache-2.0，Black Forest Labs）；ComfyUI（GPL-3.0）
+- **图像模型**：SD-Turbo（Stability AI Community License）；ComfyUI（GPL-3.0）
 - 代码：MIT（如果你要 fork，请保留 `/docs/schema.md` 里关于 IP 边界的那一节）
 
 ---

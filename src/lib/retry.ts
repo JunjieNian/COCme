@@ -1,7 +1,7 @@
 /**
  * Generic API retry helpers with exponential backoff + jitter.
  *
- * Used to silently recover from transient DeepSeek failures (429/5xx/connection
+ * Used to silently recover from transient Codex failures (rate limit/connection
  * drops/timeouts) during a KP turn so the player never sees a red error banner
  * for a blip.  Only cataloged-transient errors are retried; auth/bad-request
  * class errors fail fast.

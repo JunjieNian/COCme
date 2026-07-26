@@ -66,7 +66,7 @@ export default async function ImportModulePage({
           label="整理文档为模组结构"
           expectedSec={45}
           phases={[
-            { from: 0,  label: '连接 DeepSeek 整理器' },
+            { from: 0,  label: '连接 Codex 整理器' },
             { from: 3,  label: '解析你粘贴的文本' },
             { from: 12, label: '提取场景 / NPC / 线索' },
             { from: 30, label: '补全缺失部分并交叉验证' },

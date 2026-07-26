@@ -16,7 +16,7 @@ export type CheckRequest = z.infer<typeof CheckRequest>;
 /**
  * Per-turn visual brief consumed by the image-generation trigger.  MUST be
  * spoiler-safe (only things the player has already seen / is seeing right
- * now), MUST be in English (FLUX / SDXL prefer English tokens).  If absent,
+ * now), MUST be in English (SD-Turbo/SDXL prefer English tokens). If absent,
  * the trigger falls back to the static scene.visual_hint.
  */
 export const VisualBrief = z.object({

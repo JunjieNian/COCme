@@ -5,8 +5,8 @@ import { useFormStatus } from 'react-dom';
 
 /**
  * Progress bar + phase label for long-running server actions that we can't
- * stream real progress from (the DeepSeek reasoner gives us one big JSON
- * response, no interim signal).
+ * stream real progress from (Codex returns one structured JSON response,
+ * with no token-level signal from the SDK).
  *
  * Strategy: pure time-based estimate with an asymptotic curve — progress
  * crosses 90% near the expected finish time and then stalls there so the
@@ -24,8 +24,8 @@ export interface ProgressPhase {
 }
 
 const DEFAULT_PHASES: ProgressPhase[] = [
-  { from: 0,  label: '提交请求，连接 DeepSeek' },
-  { from: 3,  label: 'reasoner 思考中' },
+  { from: 0,  label: '提交请求，连接 Codex' },
+  { from: 3,  label: '轻度推理中' },
   { from: 18, label: '生成模组结构（前提 / 场景 / NPC）' },
   { from: 45, label: '编织线索与真相图' },
   { from: 75, label: '整理结局条件与遭遇' },
@@ -97,7 +97,7 @@ export function GenerationProgress({
         <span>{phase.label}…</span>
       </div>
       <p className="mt-3 text-[11px] text-ink-500">
-        DeepSeek 的 reasoner 一次性给完整 JSON，不走 token 流，所以这条进度条是时间近似——实际完成时直接跳转到模组页面。期间请不要关页面或重复提交。
+        Codex 一次性返回完整 JSON，因此这条进度条是时间近似——实际完成时会直接跳转到模组页面。期间请不要关闭页面或重复提交。
       </p>
     </div>
   );

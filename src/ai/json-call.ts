@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { ChatCompletion, ChatMessage } from './provider.js';
 
 export interface CallJsonOptions {
@@ -42,10 +43,18 @@ export async function callJsonWithSchema<S extends z.ZodTypeAny>(
           ];
 
     const reqFormat: { type: 'json_object' } = { type: 'json_object' };
+    // OpenAI/Codex structured outputs do not support map/record schemas whose
+    // additionalProperties is another schema. In that case keep JSON-only
+    // prompting plus the existing Zod validation/repair loop.
+    const portableSchema = zodToJsonSchema(schema, { target: 'jsonSchema7' });
+    const outputSchema = isStrictOutputSchema(portableSchema)
+      ? zodToJsonSchema(schema, { target: 'openAi' })
+      : undefined;
     const req: Parameters<ChatCompletion>[0] = {
       model: opts.model,
       messages: msgs,
       response_format: reqFormat,
+      ...(outputSchema !== undefined ? { output_schema: outputSchema } : {}),
       ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
       ...(opts.maxTokens !== undefined ? { max_tokens: opts.maxTokens } : {}),
       ...(opts.signal !== undefined ? { signal: opts.signal } : {}),
@@ -74,6 +83,19 @@ export async function callJsonWithSchema<S extends z.ZodTypeAny>(
   throw new Error(
     `callJsonWithSchema: failed after ${maxRepairs + 1} attempts. Last error: ${errorSummary(lastError)}`,
   );
+}
+
+function isStrictOutputSchema(value: unknown): boolean {
+  if (Array.isArray(value)) return value.every(isStrictOutputSchema);
+  if (!value || typeof value !== 'object') return true;
+  const object = value as Record<string, unknown>;
+  if (
+    Object.prototype.hasOwnProperty.call(object, 'additionalProperties')
+    && object['additionalProperties'] !== false
+  ) {
+    return false;
+  }
+  return Object.values(object).every(isStrictOutputSchema);
 }
 
 function errorSummary(err: unknown): string {

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { fluxSchnellWorkflow } from '../workflows/flux-schnell.js';
+import { sdTurboWorkflow } from '../workflows/sd-turbo.js';
 import {
   makeProviderError,
   type GenerateImageInput,
@@ -38,11 +38,11 @@ export function createComfyUiProvider(baseUrl: string): ImageProvider {
 
   return {
     id: 'comfyui',
-    model: 'flux1-schnell',
+    model: 'sd-turbo',
 
     async generate(input: GenerateImageInput): Promise<GenerateImageResult> {
       const clientId = randomUUID();
-      const workflow = fluxSchnellWorkflow({
+      const workflow = sdTurboWorkflow({
         prompt: input.prompt,
         width: input.width,
         height: input.height,
@@ -134,7 +134,7 @@ export function createComfyUiProvider(baseUrl: string): ImageProvider {
           bytes,
           mime: 'image/png',
           provider: 'comfyui',
-          model: 'flux1-schnell',
+          model: 'sd-turbo',
           seed: input.seed,
         };
       }
